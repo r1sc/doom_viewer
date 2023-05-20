@@ -164,7 +164,6 @@ export class BSPPlane {
     D: number;
 
     constructor(public start: Vertex, public dx: number, public dy: number) {
-
         // Ax + By + D = 0
         // D = -Ax - By
         this.A = -dy;
