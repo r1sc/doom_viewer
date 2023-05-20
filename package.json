@@ -5,15 +5,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "watch": "rollup -c -w",
-    "build": "rollup -c",
-    "serve": "cd www && node c:\\tools\\minserver\\serve.js"
+    "start": "esbuild src/main.ts --outfile=www/dist/bundle.js --sourcemap --bundle --watch --servedir=www",
+    "build": "esbuild src/main.ts --outfile=www/dist/bundle.js --bundle"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@rollup/plugin-typescript": "^8.2.5",
-    "rollup": "^2.56.3",
+    "esbuild": "^0.17.19",
     "tslib": "^2.5.0",
     "typescript": "^4.9.5"
   }
