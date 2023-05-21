@@ -1,4 +1,3 @@
-import { Quaternion, Vec3 } from "./linalg";
 import { Transform } from "./transform";
 
 function glFrustum(left: number, right: number, bottom: number, top: number, znear: number, zfar: number) {

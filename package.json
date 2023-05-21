@@ -1,15 +1,14 @@
 {
-  "name": "cardgame",
+  "name": "doom_viewer",
   "private": "true",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
     "start": "esbuild src/main.ts --outfile=www/dist/bundle.js --sourcemap --bundle --watch --servedir=www",
     "build": "esbuild src/main.ts --outfile=www/dist/bundle.js --bundle"
   },
   "author": "",
-  "license": "ISC",
+  "license": "GPLV3",
   "devDependencies": {
     "esbuild": "^0.17.19",
     "tslib": "^2.5.0",

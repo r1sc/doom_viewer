@@ -1,9 +1,5 @@
 import { BSPNode, BSPPlane, Subsector, Vertex } from "./doomdata";
 
-interface Line {
-    a: Vertex, b: Vertex
-}
-
 interface SubsectorPolygons {
     vertices: Vertex[],
     indices: number[],
