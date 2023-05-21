@@ -7,7 +7,7 @@ interface Line {
 interface SubsectorPolygons {
     vertices: Vertex[],
     indices: number[],
-    segs: Line[]
+    subsector: Subsector
 }
 
 function triangulate(vertices: Vertex[]) {
@@ -62,13 +62,7 @@ function process_subsector(subsector: Subsector, bsp_nodes: BSPPlane[]): Subsect
     // 3. Triangulate (i.e. create indices)
     const indices = triangulate(vertices);
 
-    // 4. Segs (walls)
-    const segs: Line[] = [];
-    for (const seg of subsector.segs) {
-        segs.push({ a: seg.start, b: seg.end });
-    }
-
-    return { vertices, indices, segs };
+    return { vertices, indices, subsector };
 };
 
 export function build_sectors(subsectors: Subsector[], nodes: BSPNode[]) {

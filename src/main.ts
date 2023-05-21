@@ -14,27 +14,59 @@ import { build_sectors } from "./sector_builder";
 
     const sector_vertices: number[] = [];
     const sector_indices: number[] = [];
-    const colors = [[0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1,1,1]];
     let idx = 0;
     for (const [key, sector_polygons] of processed_sectors.entries()) {
+        const sector = sectors[key];
+
         for (const polygon of sector_polygons) {
-            sector_indices.push(...polygon.indices.map(i => i + idx));
             
-            const color = colors[key % colors.length];
 
-            const sector = sectors[key];
+            const randomcolor = () => [Math.random(), Math.random(), Math.random()];
 
-            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.floor, v.y, ...color]));
+            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.floor, v.y, ...randomcolor()]));
+            sector_indices.push(...polygon.indices.map(i => i + idx));
             idx += polygon.vertices.length;
 
-            for(const seg of polygon.segs) {
-                sector_vertices.push(seg.a.x, -1000, seg.a.y, ...color);
-                sector_vertices.push(seg.a.x, sector.floor, seg.a.y, ...color);
-                sector_vertices.push(seg.b.x, sector.floor, seg.b.y, ...color);
-                sector_vertices.push(seg.b.x, -1000, seg.b.y, ...color);
-                sector_indices.push(idx + 0, idx + 1, idx + 2);
-                sector_indices.push(idx + 0, idx + 2, idx + 3);
-                idx += 4;
+            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.ceiling, v.y, ...randomcolor()]));
+            sector_indices.push(...polygon.indices.map(i => i + idx));
+            idx += polygon.vertices.length;
+
+            for (const seg of polygon.subsector.segs) {
+                let bottom = -1000;
+                let top = 1000;
+
+                if (seg.linedef.back_sidedef !== null) {
+                    // Two sided
+                    const other_sector = seg.linedef.back_sidedef.sector;
+                    if (seg.linedef.front_sidedef.lower_texture !== "-") {
+
+                        sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.start.x, other_sector.floor, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, other_sector.floor, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
+                        sector_indices.push(idx + 0, idx + 1, idx + 2);
+                        sector_indices.push(idx + 0, idx + 2, idx + 3);
+                        idx += 4;
+                    }
+                    if (seg.linedef.front_sidedef.upper_texture !== "-") {
+
+                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.start.x, other_sector.ceiling, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_indices.push(idx + 0, idx + 1, idx + 2);
+                        sector_indices.push(idx + 0, idx + 2, idx + 3);
+                        idx += 4;
+                    }
+                } else {
+                    sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
+                    sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
+                    sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
+                    sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
+                    sector_indices.push(idx + 0, idx + 1, idx + 2);
+                    sector_indices.push(idx + 0, idx + 2, idx + 3);
+                    idx += 4;
+                }
             }
         }
     }
