@@ -17,13 +17,11 @@ import { build_sectors } from "./sector_builder";
     let idx = 0;
     for (const [key, sector_polygons] of processed_sectors.entries()) {
         const sector = sectors[key];
-
         for (const polygon of sector_polygons) {
-            
-
             const randomcolor = () => [Math.random(), Math.random(), Math.random()];
 
-            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.floor, v.y, ...randomcolor()]));
+            const floor_vertices = [...polygon.vertices].reverse();
+            sector_vertices.push(...floor_vertices.flatMap(v => [v.x, sector.floor, v.y, ...randomcolor()]));
             sector_indices.push(...polygon.indices.map(i => i + idx));
             idx += polygon.vertices.length;
 
@@ -32,9 +30,6 @@ import { build_sectors } from "./sector_builder";
             idx += polygon.vertices.length;
 
             for (const seg of polygon.subsector.segs) {
-                let bottom = -1000;
-                let top = 1000;
-
                 if (seg.linedef.back_sidedef !== null) {
                     // Two sided
                     const other_sector = seg.linedef.back_sidedef.sector;
@@ -50,10 +45,31 @@ import { build_sectors } from "./sector_builder";
                     }
                     if (seg.linedef.front_sidedef.upper_texture !== "-") {
 
-                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
                         sector_vertices.push(seg.start.x, other_sector.ceiling, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
                         sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_indices.push(idx + 0, idx + 1, idx + 2);
+                        sector_indices.push(idx + 0, idx + 2, idx + 3);
+                        idx += 4;
+                    }
+
+                    if (seg.linedef.back_sidedef.lower_texture !== "-") {
+
+                        sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.start.x, other_sector.floor, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, other_sector.floor, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
+                        sector_indices.push(idx + 0, idx + 1, idx + 2);
+                        sector_indices.push(idx + 0, idx + 2, idx + 3);
+                        idx += 4;
+                    }
+                    if (seg.linedef.back_sidedef.upper_texture !== "-") {
+
+                        sector_vertices.push(seg.start.x, other_sector.ceiling, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
+                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
                         sector_indices.push(idx + 0, idx + 1, idx + 2);
                         sector_indices.push(idx + 0, idx + 2, idx + 3);
                         idx += 4;
@@ -166,7 +182,7 @@ void main() {
     const camera = new Camera(45, canvas.width / canvas.height, 10, 10000);
     camera.transform.position = new Vec3(1055, 10, -3230);
 
-    // gl.enable(gl.CULL_FACE);
+    gl.enable(gl.CULL_FACE);
     gl.frontFace(gl.CW);
 
     const keys_down = new Set<string>();

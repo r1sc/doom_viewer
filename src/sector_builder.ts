@@ -11,38 +11,18 @@ interface SubsectorPolygons {
 }
 
 function triangulate(vertices: Vertex[]) {
-    // 1. Find center
-    // let min_x = Number.MAX_VALUE;
-    // let min_y = Number.MAX_VALUE;
-    // let max_x = -Number.MAX_VALUE;
-    // let max_y = -Number.MAX_VALUE;
-    // vertices.forEach(v => {
-    //     if(v.x < min_x) min_x = v.x;
-    //     if(v.y < min_y) min_y = v.y;
-    //     if(v.x > max_x) max_x = v.x;
-    //     if(v.y > max_y) max_y = v.y;
-    // });
-
-    // const center_x = min_x + (max_x - min_x) / 2;
-    // const center_y = min_y + (max_y - min_y) / 2;
-
-    // 2. Order
-    // vertices.sort((a, b) => Math.atan2(a.y - center_y, a.x - center_x) - Math.atan2(b.y - center_y, b.x - center_x));
-
     const indices: number[] = [];
-
     for (let i = 1; i < vertices.length - 1; i++) {
         indices.push(0, i + 0, i + 1);
     }
-
     return indices;
 }
 
 function process_subsector(subsector: Subsector, bsp_nodes: BSPPlane[]): SubsectorPolygons {
-    const minx = -1000000;
-    const miny = -1000000;
-    const maxx = 1000000;
-    const maxy = 1000000;
+    const minx = -100000;
+    const miny = -100000;
+    const maxx = 100000;
+    const maxy = 100000;
     let vertices: Vertex[] = [
         { x: minx, y: miny }, { x: maxx, y: miny },
         { x: maxx, y: maxy }, { x: minx, y: maxy },

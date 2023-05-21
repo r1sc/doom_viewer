@@ -173,7 +173,7 @@ export class BSPPlane {
 
     get_side(a: Vertex) {
         const distance = this.A * a.x + this.B * a.y + this.D;
-        return distance > 0 ? "inside" : "outside";
+        return distance >= 0 ? "inside" : "outside";
     }
 
     get_line_intersection_unsafe(a: Vertex, b: Vertex): Vertex {
