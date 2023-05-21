@@ -1,3 +1,4 @@
+const range = (count: number) => [...new Array(count).keys()];
 
 class BinaryReader {
     dataView: DataView;
@@ -12,14 +13,32 @@ class BinaryReader {
         return this.dataView.getUint8(this.offset++);
     }
 
+    public readBytes(count: number) {
+        const data = new Uint8Array(this.data.slice(this.offset, this.offset + count));
+        this.offset += count;
+        return data;
+    }
+
     public read_i16() {
         const result = this.dataView.getInt16(this.offset, true);
         this.offset += 2;
         return result;
     }
 
+    public read_u16() {
+        const result = this.dataView.getUint16(this.offset, true);
+        this.offset += 2;
+        return result;
+    }
+
     public read_i32() {
         const result = this.dataView.getInt32(this.offset, true);
+        this.offset += 4;
+        return result;
+    }
+
+    public read_u32() {
+        const result = this.dataView.getUint32(this.offset, true);
         this.offset += 4;
         return result;
     }
@@ -72,6 +91,14 @@ class WAD {
 
     get_data(lump_index: number) {
         const sub_ab = this.br.data.slice(this.lumps[lump_index].filepos, this.lumps[lump_index].filepos + this.lumps[lump_index].size);
+        return new BinaryReader(sub_ab);
+    }
+
+    get_lump(name: string) {
+        name = name.toUpperCase();
+        const lump = this.lumps.find(l => l.name === name);
+        if (!lump) throw new Error("Failed to find lump " + name);
+        const sub_ab = this.br.data.slice(lump.filepos, lump.filepos + lump.size);
         return new BinaryReader(sub_ab);
     }
 
@@ -312,7 +339,7 @@ export async function parse_doom_data(url: string, level: string) {
         for (let i = 0; i < count; i++) {
             ssector_segs.push(segs[start_index + i]);
         }
-        
+
         const front = segs[start_index].direction === 0 ? segs[start_index].linedef.front_sidedef : segs[start_index].linedef.back_sidedef!;
         const ssector = { segs: ssector_segs, sector: front.sector };
         front.sector.sub_sectors.push(ssector);
@@ -348,6 +375,118 @@ export async function parse_doom_data(url: string, level: string) {
         };
     });
 
+
+    function read_texture_lump(br: BinaryReader) {
+        const num_textures = br.read_i32();
+        const texture_offsets = range(num_textures).map(() => br.read_i32());
+        const textures = texture_offsets.map(offset => {
+            br.offset = offset;
+
+            const name = br.read_string(8);
+            const _masked = br.read_i32();
+            const width = br.read_i16();
+            const height = br.read_i16();
+            const _columdirectory = br.read_i32();
+            const patchcount = br.read_i16();
+
+            const patches = range(patchcount).map(() => {
+                const originx = br.read_i16();
+                const originy = br.read_i16();
+                const patch = br.read_i16();
+                const _stepdir = br.read_i16();
+                const _colormap = br.read_i16();
+
+                return { originx, originy, patch };
+            });
+
+            return { name, width, height, patches };
+        });
+
+        return textures;
+    }
+    const texture1 = read_texture_lump(wad.get_lump("TEXTURE1"));
+    const lumpnames = wad.lumps.map(l => l.name).sort();
+    console.log(lumpnames);
+
+    function load_picture(name: string) {
+        const br = wad.get_lump(name);
+        const width = br.read_u16();
+        const height = br.read_u16();
+        const leftoffset = br.read_i16();
+        const topoffset = br.read_i16();
+        const columnofs = range(width).map(() => br.read_u32());
+
+        const pixels = new Uint8Array(width * height);
+        for (let col = 0; col < width; col++) {
+            br.offset = columnofs[col];
+            while (true) {
+                const topdelta = br.readByte();
+                if (topdelta === 0xFF)
+                    break;
+                const length = br.readByte();
+                const _unused = br.readByte();
+                const data = br.readBytes(length);
+                const _unused2 = br.readByte();
+                for (let y = 0; y < length; y++) {
+                    pixels[width * (y + topdelta) + col] = data[y];
+                }
+            }
+        }
+        return { pixels, width, height, leftoffset, topoffset };
+    }
+
+    const pnames = (() => {
+        const br = wad.get_lump("PNAMES");
+        const num_patches = br.read_u32();
+        return range(num_patches).map(() => br.read_string(8));
+    })();
+
+    const playpal = (() => {
+        const br = wad.get_lump("PLAYPAL");
+        return range(14).map(() => br.readBytes(768));
+    })();
+
+    const colormap = (() => {
+        const br = wad.get_lump("COLORMAP");
+        return range(34).map(() => br.readBytes(256));
+    })();
+
+    function build_texture(name: string) {
+        const tex = texture1.find(t => t.name === name)!;
+        const texture_pixels = new Uint8Array(tex.width * tex.height);
+        for (const p of tex.patches) {
+            const patch_name = pnames[p.patch];
+            const patch = load_picture(patch_name);
+            for (let x = 0; x < patch.width; x++) {
+                const xx = x + p.originx;
+                if (xx >= tex.width) break;
+                for (let y = 0; y < patch.height; y++) {
+                    const yy = y + p.originy;
+                    if (yy >= tex.height) break;
+                    texture_pixels[tex.width * yy + xx] = patch.pixels[y * patch.width + x];
+                }
+            }
+        }
+        return { pixels: texture_pixels, width: tex.width, height: tex.height };
+    }
+
+    function build_texture_rgba(name: string) {
+        const texture = build_texture(name);
+        const pixels = new Uint32Array(texture.width * texture.height);
+        for (let y = 0; y < texture.height; y++) {
+            for (let x = 0; x < texture.height; x++) {
+                const colormap_index = texture.pixels[y * texture.width + x];
+                const palette_index = colormap[0][colormap_index];
+                const r = playpal[0][palette_index * 3 + 0];
+                const g = playpal[0][palette_index * 3 + 1];
+                const b = playpal[0][palette_index * 3 + 2];
+
+                pixels[y * texture.width + x] = (255 << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+        return { width: texture.width, height: texture.height, pixels };
+    }
+
     return {
         nodes,
         subsectors,
@@ -355,6 +494,7 @@ export async function parse_doom_data(url: string, level: string) {
         segs,
         linedefs,
         sidedefs,
-        vertices
+        vertices,
+        build_texture_rgba
     };
 };

@@ -5,6 +5,7 @@
   "description": "",
   "scripts": {
     "start": "esbuild src/main.ts --outfile=www/dist/bundle.js --sourcemap --bundle --watch --servedir=www",
+    "start_texlab": "esbuild src/texture_lab.ts --outfile=www/dist/bundle.js --sourcemap --bundle --watch --servedir=www",
     "build": "esbuild src/main.ts --outfile=www/dist/bundle.js --bundle"
   },
   "author": "",
