@@ -404,9 +404,6 @@ export async function parse_doom_data(url: string, level: string) {
 
         return textures;
     }
-    const texture1 = read_texture_lump(wad.get_lump("TEXTURE1"));
-    const lumpnames = wad.lumps.map(l => l.name).sort();
-    console.log(lumpnames);
 
     function load_picture(name: string) {
         const br = wad.get_lump(name);
@@ -451,7 +448,9 @@ export async function parse_doom_data(url: string, level: string) {
         return range(34).map(() => br.readBytes(256));
     })();
 
-    function build_texture(name: string) {
+    const texture1 = read_texture_lump(wad.get_lump("TEXTURE1"));
+
+    function build_wall_texture(name: string) {
         const tex = texture1.find(t => t.name === name)!;
         const texture_pixels = new Uint8Array(tex.width * tex.height);
         for (const p of tex.patches) {
@@ -470,8 +469,13 @@ export async function parse_doom_data(url: string, level: string) {
         return { pixels: texture_pixels, width: tex.width, height: tex.height };
     }
 
-    function build_texture_rgba(name: string) {
-        const texture = build_texture(name);
+    function build_flat(name: string) {
+        const br = wad.get_lump(name);
+        return { width: 64, height: 64, pixels: br.readBytes(64 * 64) };
+    }
+
+    function build_texture_rgba(name: string, is_flat: boolean) {
+        const texture = is_flat ? build_flat(name) : build_wall_texture(name);
         const pixels = new Uint32Array(texture.width * texture.height);
         for (let y = 0; y < texture.height; y++) {
             for (let x = 0; x < texture.height; x++) {
@@ -495,6 +499,8 @@ export async function parse_doom_data(url: string, level: string) {
         linedefs,
         sidedefs,
         vertices,
+        build_wall_texture,
+        build_flat,
         build_texture_rgba
     };
 };

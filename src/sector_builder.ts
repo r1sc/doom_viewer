@@ -1,4 +1,4 @@
-import { BSPNode, BSPPlane, Subsector, Vertex } from "./doomdata";
+import { BSPNode, BSPPlane, Linedef, Subsector, Vertex } from "./doomdata";
 
 interface SubsectorPolygons {
     vertices: Vertex[],

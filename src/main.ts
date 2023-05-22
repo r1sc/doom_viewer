@@ -4,21 +4,21 @@ import { Quaternion, Vec3 } from "./linalg";
 import { build_sectors } from "./sector_builder";
 
 (async function () {
-    const { nodes, subsectors, sectors } = await parse_doom_data(
+    const { nodes, subsectors, sectors, linedefs } = await parse_doom_data(
         "https://raw.githubusercontent.com/mattiasgustavsson/doom-crt/main/DOOM1.WAD",
         "E1M1"
     );
     //   X  Y  Z     R  G  B   
     const processed_sectors = build_sectors(subsectors, nodes);
     // const sector_polygons = processed_sectors.get(24)!;
-
+    
+    const randomcolor = () => [Math.random(), Math.random(), Math.random()];
     const sector_vertices: number[] = [];
     const sector_indices: number[] = [];
     let idx = 0;
     for (const [key, sector_polygons] of processed_sectors.entries()) {
         const sector = sectors[key];
         for (const polygon of sector_polygons) {
-            const randomcolor = () => [Math.random(), Math.random(), Math.random()];
 
             const floor_vertices = [...polygon.vertices].reverse();
             sector_vertices.push(...floor_vertices.flatMap(v => [v.x, sector.floor, v.y, ...randomcolor()]));
@@ -28,62 +28,63 @@ import { build_sectors } from "./sector_builder";
             sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.ceiling, v.y, ...randomcolor()]));
             sector_indices.push(...polygon.indices.map(i => i + idx));
             idx += polygon.vertices.length;
+        }
+    }
 
-            for (const seg of polygon.subsector.segs) {
-                if (seg.linedef.back_sidedef !== null) {
-                    // Two sided
-                    const other_sector = seg.linedef.back_sidedef.sector;
-                    if (seg.linedef.front_sidedef.lower_texture !== "-") {
+    for(const linedef of linedefs) {
+        const sector = linedef.front_sidedef.sector;
+        if (linedef.back_sidedef !== null) {
+            // Two sided
+            const other_sector = linedef.back_sidedef.sector;
+            if (linedef.front_sidedef.lower_texture !== "-") {
 
-                        sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.start.x, other_sector.floor, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, other_sector.floor, seg.end.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
-                        sector_indices.push(idx + 0, idx + 1, idx + 2);
-                        sector_indices.push(idx + 0, idx + 2, idx + 3);
-                        idx += 4;
-                    }
-                    if (seg.linedef.front_sidedef.upper_texture !== "-") {
-
-                        sector_vertices.push(seg.start.x, other_sector.ceiling, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
-                        sector_indices.push(idx + 0, idx + 1, idx + 2);
-                        sector_indices.push(idx + 0, idx + 2, idx + 3);
-                        idx += 4;
-                    }
-
-                    if (seg.linedef.back_sidedef.lower_texture !== "-") {
-
-                        sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.start.x, other_sector.floor, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, other_sector.floor, seg.end.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
-                        sector_indices.push(idx + 0, idx + 1, idx + 2);
-                        sector_indices.push(idx + 0, idx + 2, idx + 3);
-                        idx += 4;
-                    }
-                    if (seg.linedef.back_sidedef.upper_texture !== "-") {
-
-                        sector_vertices.push(seg.start.x, other_sector.ceiling, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
-                        sector_vertices.push(seg.end.x, other_sector.ceiling, seg.end.y, ...randomcolor());
-                        sector_indices.push(idx + 0, idx + 1, idx + 2);
-                        sector_indices.push(idx + 0, idx + 2, idx + 3);
-                        idx += 4;
-                    }
-                } else {
-                    sector_vertices.push(seg.start.x, sector.floor, seg.start.y, ...randomcolor());
-                    sector_vertices.push(seg.start.x, sector.ceiling, seg.start.y, ...randomcolor());
-                    sector_vertices.push(seg.end.x, sector.ceiling, seg.end.y, ...randomcolor());
-                    sector_vertices.push(seg.end.x, sector.floor, seg.end.y, ...randomcolor());
-                    sector_indices.push(idx + 0, idx + 1, idx + 2);
-                    sector_indices.push(idx + 0, idx + 2, idx + 3);
-                    idx += 4;
-                }
+                sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.start.x, other_sector.floor, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, other_sector.floor, linedef.end.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
+                sector_indices.push(idx + 0, idx + 1, idx + 2);
+                sector_indices.push(idx + 0, idx + 2, idx + 3);
+                idx += 4;
             }
+            if (linedef.front_sidedef.upper_texture !== "-") {
+
+                sector_vertices.push(linedef.start.x, other_sector.ceiling, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, other_sector.ceiling, linedef.end.y, ...randomcolor());
+                sector_indices.push(idx + 0, idx + 1, idx + 2);
+                sector_indices.push(idx + 0, idx + 2, idx + 3);
+                idx += 4;
+            }
+
+            if (linedef.back_sidedef.lower_texture !== "-") {
+
+                sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.start.x, other_sector.floor, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, other_sector.floor, linedef.end.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
+                sector_indices.push(idx + 0, idx + 1, idx + 2);
+                sector_indices.push(idx + 0, idx + 2, idx + 3);
+                idx += 4;
+            }
+            if (linedef.back_sidedef.upper_texture !== "-") {
+
+                sector_vertices.push(linedef.start.x, other_sector.ceiling, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
+                sector_vertices.push(linedef.end.x, other_sector.ceiling, linedef.end.y, ...randomcolor());
+                sector_indices.push(idx + 0, idx + 1, idx + 2);
+                sector_indices.push(idx + 0, idx + 2, idx + 3);
+                idx += 4;
+            }
+        } else {
+            sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
+            sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
+            sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
+            sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
+            sector_indices.push(idx + 0, idx + 1, idx + 2);
+            sector_indices.push(idx + 0, idx + 2, idx + 3);
+            idx += 4;
         }
     }
 
