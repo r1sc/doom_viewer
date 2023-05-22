@@ -450,19 +450,41 @@ export async function parse_doom_data(url: string, level: string) {
 
     const texture1 = read_texture_lump(wad.get_lump("TEXTURE1"));
 
-    function build_wall_texture(name: string) {
-        const tex = texture1.find(t => t.name === name)!;
-        const texture_pixels = new Uint8Array(tex.width * tex.height);
+    function build_wall_texture_rgba(name: string) {
+        const tex = texture1.find(t => t.name === name.toUpperCase());
+        if (!tex) throw new Error("Cannot find texture " + name);
+
+        const texture_pixels = new Uint32Array(tex.width * tex.height);
+
         for (const p of tex.patches) {
             const patch_name = pnames[p.patch];
-            const patch = load_picture(patch_name);
-            for (let x = 0; x < patch.width; x++) {
-                const xx = x + p.originx;
-                if (xx >= tex.width) break;
-                for (let y = 0; y < patch.height; y++) {
-                    const yy = y + p.originy;
-                    if (yy >= tex.height) break;
-                    texture_pixels[tex.width * yy + xx] = patch.pixels[y * patch.width + x];
+            const br = wad.get_lump(patch_name);
+            const width = br.read_u16();
+            const height = br.read_u16();
+            const leftoffset = br.read_i16();
+            const topoffset = br.read_i16();
+            const columnofs = range(width).map(() => br.read_u32());
+            
+            for (let col = 0; col < width; col++) {
+                br.offset = columnofs[col];
+                while (true) {
+                    const topdelta = br.readByte();
+                    if (topdelta === 0xFF)
+                        break;
+                    const length = br.readByte();
+                    const _unused = br.readByte();
+                    const data = br.readBytes(length);
+                    const _unused2 = br.readByte();
+                    for (let y = 0; y < length; y++) {
+                        const colormap_index = data[y];
+                        const palette_index = colormap[0][colormap_index];
+
+                        const r = playpal[0][palette_index * 3 + 0];
+                        const g = playpal[0][palette_index * 3 + 1];
+                        const b = playpal[0][palette_index * 3 + 2];
+                        
+                        texture_pixels[tex.width * (y + topdelta + p.originy) + col + p.originx] = (255 << 24) | (b << 16) | (g << 8) | r;
+                    }
                 }
             }
         }
@@ -471,24 +493,25 @@ export async function parse_doom_data(url: string, level: string) {
 
     function build_flat(name: string) {
         const br = wad.get_lump(name);
-        return { width: 64, height: 64, pixels: br.readBytes(64 * 64) };
-    }
+        const data = br.readBytes(64 * 64);
+        const pixels = new Uint32Array(64 * 64);
 
-    function build_texture_rgba(name: string, is_flat: boolean) {
-        const texture = is_flat ? build_flat(name) : build_wall_texture(name);
-        const pixels = new Uint32Array(texture.width * texture.height);
-        for (let y = 0; y < texture.height; y++) {
-            for (let x = 0; x < texture.height; x++) {
-                const colormap_index = texture.pixels[y * texture.width + x];
+        for (let y = 0; y < 64; y++) {
+            for (let x = 0; x < 64; x++) {
+                const colormap_index = data[y * 64 + x];
                 const palette_index = colormap[0][colormap_index];
+
                 const r = playpal[0][palette_index * 3 + 0];
                 const g = playpal[0][palette_index * 3 + 1];
                 const b = playpal[0][palette_index * 3 + 2];
-
-                pixels[y * texture.width + x] = (255 << 24) | (b << 16) | (g << 8) | r;
+                pixels[y * 64 + x] = (255 << 24) | (b << 16) | (g << 8) | r;
             }
         }
-        return { width: texture.width, height: texture.height, pixels };
+        return { width: 64, height: 64, pixels };
+    }
+
+    function build_texture_rgba(name: string, is_flat: boolean) {
+        return is_flat ? build_flat(name) : build_wall_texture_rgba(name);
     }
 
     return {
@@ -499,8 +522,9 @@ export async function parse_doom_data(url: string, level: string) {
         linedefs,
         sidedefs,
         vertices,
-        build_wall_texture,
         build_flat,
         build_texture_rgba
     };
 };
+type WithoutPromise<T> = T extends Promise<infer R> ? R : never;
+export type LevelData = WithoutPromise<ReturnType<typeof parse_doom_data>>

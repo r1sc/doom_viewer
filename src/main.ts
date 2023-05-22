@@ -1,113 +1,121 @@
 import { Camera } from "./camera";
-import { parse_doom_data } from "./doomdata";
+import { Linedef, Sidedef, Vertex, parse_doom_data } from "./doomdata";
 import { Quaternion, Vec3 } from "./linalg";
 import { build_sectors } from "./sector_builder";
+import { pack_textures } from "./texture_packer";
 
 (async function () {
-    const { nodes, subsectors, sectors, linedefs } = await parse_doom_data(
+    const level_data = await parse_doom_data(
         "https://raw.githubusercontent.com/mattiasgustavsson/doom-crt/main/DOOM1.WAD",
-        "E1M1"
+        "E1M3"
     );
-    //   X  Y  Z     R  G  B   
-    const processed_sectors = build_sectors(subsectors, nodes);
-    // const sector_polygons = processed_sectors.get(24)!;
-    
-    const randomcolor = () => [Math.random(), Math.random(), Math.random()];
+    //   X  Y  Z     X_ofs Y_ofs W_recip H_recip u v
+    const processed_sectors = build_sectors(level_data.subsectors, level_data.nodes);
+    const packed_texture = pack_textures(level_data);
+
+    function get_slab_attr(name: string) {
+        const slab = packed_texture.slab_info.get(name);
+        if (!slab) throw new Error("Failed to find texture " + name);
+        return [slab.ofs_x, slab.ofs_y, slab.w_recip, slab.h_recip];
+    }
+    function slab_size(name: string) {
+        const slab = packed_texture.slab_info.get(name);
+        if (!slab) throw new Error("Failed to find texture " + name);
+        return {w: slab.w_recip * packed_texture.atlas_size, h: slab.h_recip * packed_texture.atlas_size };
+    }
+    function get_u(start: Vertex, end: Vertex) {
+        const dx = Math.abs(end.x - start.x);
+        const dy = Math.abs(end.y - start.y);
+        const l = Math.sqrt(dx * dx + dy * dy);
+        return l;
+    }
+
     const sector_vertices: number[] = [];
     const sector_indices: number[] = [];
     let idx = 0;
     for (const [key, sector_polygons] of processed_sectors.entries()) {
-        const sector = sectors[key];
-        for (const polygon of sector_polygons) {
+        const sector = level_data.sectors[key];
 
+        const floor_attr = get_slab_attr(sector.floor_texture);
+        const ceil_attr = get_slab_attr(sector.ceiling_texture);
+
+        for (const polygon of sector_polygons) {
             const floor_vertices = [...polygon.vertices].reverse();
-            sector_vertices.push(...floor_vertices.flatMap(v => [v.x, sector.floor, v.y, ...randomcolor()]));
+            sector_vertices.push(...floor_vertices.flatMap(v => [v.x, sector.floor, v.y, ...floor_attr, v.x / 64, v.y / 64]));
             sector_indices.push(...polygon.indices.map(i => i + idx));
             idx += polygon.vertices.length;
 
-            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.ceiling, v.y, ...randomcolor()]));
+            sector_vertices.push(...polygon.vertices.flatMap(v => [v.x, sector.ceiling, v.y, ...ceil_attr, v.x / 64, v.y / 64]));
             sector_indices.push(...polygon.indices.map(i => i + idx));
             idx += polygon.vertices.length;
         }
     }
 
-    for(const linedef of linedefs) {
+    function add_sidedef(start: Vertex, end: Vertex, u: number, low: number, high: number, texture: string, texture_offset_x: number, texture_offset_y: number) {
+        const attr = get_slab_attr(texture);
+        const s = slab_size(texture);
+        const front_startu = texture_offset_x / s.w;
+        const front_endu = u / s.w;
+
+        const startv = texture_offset_y / s.h;
+        const endv = (high -low) / s.h;
+
+        sector_vertices.push(start.x, low, start.y, ...attr, front_startu, endv);
+        sector_vertices.push(start.x, high, start.y, ...attr, front_startu, startv);
+        sector_vertices.push(end.x, high, end.y, ...attr, front_endu, startv);
+        sector_vertices.push(end.x, low, end.y, ...attr, front_endu, endv);
+        sector_indices.push(idx + 0, idx + 1, idx + 2);
+        sector_indices.push(idx + 0, idx + 2, idx + 3);
+        idx += 4;
+    }
+
+    for (const linedef of level_data.linedefs) {
+        const u = get_u(linedef.start, linedef.end);
         const sector = linedef.front_sidedef.sector;
+
         if (linedef.back_sidedef !== null) {
             // Two sided
             const other_sector = linedef.back_sidedef.sector;
+
             if (linedef.front_sidedef.lower_texture !== "-") {
-
-                sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.start.x, other_sector.floor, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, other_sector.floor, linedef.end.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
-                sector_indices.push(idx + 0, idx + 1, idx + 2);
-                sector_indices.push(idx + 0, idx + 2, idx + 3);
-                idx += 4;
+                add_sidedef(linedef.start, linedef.end, u, sector.floor, other_sector.floor, linedef.front_sidedef.lower_texture,
+                    linedef.front_sidedef.texture_offset_x, linedef.front_sidedef.texture_offset_y);
             }
-            if (linedef.front_sidedef.upper_texture !== "-") {
 
-                sector_vertices.push(linedef.start.x, other_sector.ceiling, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, other_sector.ceiling, linedef.end.y, ...randomcolor());
-                sector_indices.push(idx + 0, idx + 1, idx + 2);
-                sector_indices.push(idx + 0, idx + 2, idx + 3);
-                idx += 4;
+            if (linedef.front_sidedef.upper_texture !== "-") {
+                add_sidedef(linedef.start, linedef.end, u, other_sector.ceiling, sector.ceiling, linedef.front_sidedef.upper_texture,
+                    linedef.front_sidedef.texture_offset_x, linedef.front_sidedef.texture_offset_y);
             }
 
             if (linedef.back_sidedef.lower_texture !== "-") {
-
-                sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.start.x, other_sector.floor, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, other_sector.floor, linedef.end.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
-                sector_indices.push(idx + 0, idx + 1, idx + 2);
-                sector_indices.push(idx + 0, idx + 2, idx + 3);
-                idx += 4;
+                add_sidedef(linedef.start, linedef.end, u, sector.floor, other_sector.floor, linedef.back_sidedef.lower_texture,
+                    linedef.back_sidedef.texture_offset_x, linedef.back_sidedef.texture_offset_y);
             }
             if (linedef.back_sidedef.upper_texture !== "-") {
+                add_sidedef(linedef.start, linedef.end, u, other_sector.ceiling, sector.ceiling, linedef.back_sidedef.upper_texture,
+                    linedef.back_sidedef.texture_offset_x, linedef.back_sidedef.texture_offset_y);
+            }
 
-                sector_vertices.push(linedef.start.x, other_sector.ceiling, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
-                sector_vertices.push(linedef.end.x, other_sector.ceiling, linedef.end.y, ...randomcolor());
-                sector_indices.push(idx + 0, idx + 1, idx + 2);
-                sector_indices.push(idx + 0, idx + 2, idx + 3);
-                idx += 4;
+            if (linedef.front_sidedef.middle_texture !== "-") {
+                add_sidedef(linedef.start, linedef.end, u, sector.floor, sector.ceiling, linedef.front_sidedef.middle_texture,
+                    linedef.front_sidedef.texture_offset_x, linedef.front_sidedef.texture_offset_y);
+            }
+
+            if (linedef.back_sidedef.middle_texture !== "-") {
+                add_sidedef(linedef.start, linedef.end, u, other_sector.ceiling, other_sector.floor, linedef.back_sidedef.middle_texture,
+                    linedef.back_sidedef.texture_offset_x, linedef.back_sidedef.texture_offset_y);
             }
         } else {
-            sector_vertices.push(linedef.start.x, sector.floor, linedef.start.y, ...randomcolor());
-            sector_vertices.push(linedef.start.x, sector.ceiling, linedef.start.y, ...randomcolor());
-            sector_vertices.push(linedef.end.x, sector.ceiling, linedef.end.y, ...randomcolor());
-            sector_vertices.push(linedef.end.x, sector.floor, linedef.end.y, ...randomcolor());
-            sector_indices.push(idx + 0, idx + 1, idx + 2);
-            sector_indices.push(idx + 0, idx + 2, idx + 3);
-            idx += 4;
+            add_sidedef(linedef.start, linedef.end, u, sector.floor, sector.ceiling, linedef.front_sidedef.middle_texture,
+                linedef.front_sidedef.texture_offset_x, linedef.front_sidedef.texture_offset_y);
         }
     }
-
-
-    const list = document.createElement("select");
-    list.multiple = true;
-    list.size = 50;
-    list.style.position = "absolute";
-    list.style.top = "0";
-    list.style.left = "0";
-    document.body.append(list);
-
-    sectors.forEach(s => {
-        const o = document.createElement("option");
-        o.text = s.index.toString();
-        o.value = s.index.toString();
-        list.append(o);
-    });
 
     const canvas = document.createElement("canvas");
     canvas.width = document.body.clientWidth;
     canvas.height = document.body.clientHeight;
     document.body.append(canvas);
+
     const gl = canvas.getContext("webgl2")!;
 
     function make_shader(src: string) {
@@ -136,21 +144,32 @@ import { build_sectors } from "./sector_builder";
     const shader = make_shader(
         `#ifdef VS
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aColor;
+layout(location = 1) in vec4 aSlab; //ofs_x,ofs_y,w_recip,h_recip
+layout(location = 2) in vec2 aUv; 
 
 uniform mat4 u_mvp;
 
-out vec3 color;
+out vec2 uv;
+out vec4 slab;
 
 void main() {
     gl_Position = u_mvp * vec4(aPos, 1.0);
-    color = aColor;
+    slab = aSlab;
+    uv = aUv;
 }
 #else
 precision highp float;
-in vec3 color;
+uniform sampler2D u_texturemap;
+in vec2 uv;
+in vec4 slab;
+
 out vec4 finalColor;
+
+
 void main() {
+    vec2 part_uv = uv * slab.zw;
+
+    vec3 color = texture(u_texturemap, slab.xy + mod(part_uv, slab.zw)).rgb;
     finalColor = vec4(color, 1.0);
 }
 #endif`
@@ -172,10 +191,21 @@ void main() {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(sector_indices), gl.STATIC_DRAW);
 
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 6 * 4, 0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 9 * 4, 0);
 
     gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 6 * 4, 3 * 4);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 9 * 4, 3 * 4);
+
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 9 * 4, 7 * 4);
+
+    const atlas_texture = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, atlas_texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, packed_texture.atlas_size, packed_texture.atlas_size, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(packed_texture.atlas.buffer));
 
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0, 0, 1, 1);

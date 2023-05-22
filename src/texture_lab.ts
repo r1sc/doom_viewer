@@ -1,30 +1,23 @@
 import { parse_doom_data } from "./doomdata";
+import { pack_textures } from "./texture_packer";
 
 (async function () {
-    const { sidedefs, sectors, build_texture_rgba } = await parse_doom_data(
+    const level_data = await parse_doom_data(
         "https://raw.githubusercontent.com/mattiasgustavsson/doom-crt/main/DOOM1.WAD",
         "E1M1"
     );
-
-    const textures_in_map = new Set(sidedefs.flatMap(s => [s.lower_texture, s.middle_texture, s.upper_texture]));
-    textures_in_map.delete("-");
-
-    sectors.forEach(s => {
-        textures_in_map.add(s.ceiling_texture); 
-        textures_in_map.add(s.floor_texture); 
-        console.log(s.floor_texture);
-    });
-
-    const bigdoor1 = build_texture_rgba("FLAT20", true);
+   
+    const packed_textures = pack_textures(level_data);
 
     const canvas = document.createElement("canvas");
+    canvas.width = packed_textures.atlas_size;
+    canvas.height = packed_textures.atlas_size;
     document.body.append(canvas);
     const ctx = canvas.getContext("2d")!;
 
-    const imagedata = ctx.getImageData(0, 0, bigdoor1.width, bigdoor1.height);
+    const imagedata = ctx.getImageData(0, 0, packed_textures.atlas_size, packed_textures.atlas_size);
     const u32ary = new Uint32Array(imagedata.data.buffer);
-    u32ary.set(bigdoor1.pixels, 0);
-
-
+    u32ary.set(packed_textures.atlas, 0);
     ctx.putImageData(imagedata, 0, 0);
+
 })();
